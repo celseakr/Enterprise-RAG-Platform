@@ -75,20 +75,19 @@ Upload a PDF, then query it using natural language.
 
 ---
 
-## 🏗️ System Architecture
+## 🏗️ Architecture Diagram
 
-The system follows a modular retrieval-generation pipeline:
-
-- Document ingestion (PDF parsing)
-- Text cleaning, normalization, and segmentation
-- Recursive chunking for semantic coherence
-- Embedding generation using sentence embedding models
-- Vector storage and indexing (ChromaDB / Pinecone-compatible interface)
-- Query embedding and semantic similarity search
-- Context assembly and prompt construction
-- Local LLM inference (Ollama / LLaMA 3)
-- Grounded response generation
-- Evaluation of outputs using Ragas
+```mermaid
+flowchart TD
+    A[User Question] --> B[Streamlit UI]
+    B --> C[Query Embedding]
+    C --> D[Vector Database Search]
+    D --> E[Retrieved Context Chunks]
+    E --> F[Prompt Construction]
+    F --> G[Local LLM]
+    G --> H[Generated Answer]
+    H --> I[RAGAS Evaluation]
+```
   
 ---
 
