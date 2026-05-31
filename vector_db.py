@@ -1,6 +1,9 @@
 import chromadb
 from chromadb.utils import embedding_functions
 from pypdf import PdfReader
+import nltk
+nltk.download ('punkt_tab') #a pretrained model that knows how to split text into sentences
+from nltk.tokenize import  sent_tokenize
 
 # 1. Initialise local persistent databse storage
 print ("Initialsing ChromaDB local storage... ")
@@ -33,14 +36,24 @@ def load_pdf(file_path):
 # extracts text
 # combines everything into one big text output
 
-# Chunk texts
-def chunk_text(text, chunk_size=500, overlap =50): #takes a text and splits it into chunks of 500 characters with 50 characters overlap
-    chunks=[] # this will store all the smaller pieces of texts
-    for i in range(0, len(text), chunk_size - overlap): #loop through text (start, end, step), step is like where you start each time so like 0,450,900 etc.Start at 450 jumps each time.
-        chunk = text[i:i+chunk_size] # [0:0+500] and then because of the step next iteration is [450:450+500] and then [900:1400].. (this is so that there's an overlap in the chunks so that the meaning doesnt get lost)
-        chunks.append(chunk) # add these chunks to the list
+# Chunk texts by sentences
+def chunk_text(text, max_char=500): #input:big text, output: smaller texts, each chunk is a max of 500 characters
+    sentences=sent_tokenize(text)
+    chunks = []
+    current_chunk = ""  #temporary storage while working, add chunks here until they get to 500 max chars and then save it to chunks
+
+    for sentence in sentences:
+        if len(current_chunk) + len(sentence) <= max_char: #if adding the sentence doesnt exceed 500 characters
+            current_chunk+= " " + sentence #keep adding to it, append sentence into current chunk
+        else:
+            chunks.append(current_chunk.strip()) #if it doesnt fit, save current chunk
+            current_chunk = sentence #start new chunk with this sentence
+
+    if current_chunk: #if there's still a last chunk after the loop ends, save that chunk
+        chunks.append(current_chunk.strip())
 
     return chunks
+    
 
 print ("Loading PDF....")
 
@@ -73,15 +86,24 @@ print("Vector database successfully built!")
 # ========================================== # MILESTONE: RUN SEMANTIC SEARCH QUERIES # ========================================== 
 # The database will find matching concepts even if the exact words don't match.
 
-user_query = "Whom do donors regulary request data from?"
+user_query = "donors request beneficiary data"
 
 print(f"\n Running semantic search query: '{user_query}' ")
 
 search_results = collection.query(
     query_texts=[user_query],
-    n_results=3
+    n_results=2,
+    include=["documents", "distances"]
 )
 
+#Check for distance
+for doc, dist in zip( #zip is a python function that takes two or more lists and pairs them together
+    search_results["documents"][0], #the 0 here brings out only the result for the first query, query indexed 0, this is important if there were many queries
+    search_results["distances"][0]
+):
+    print(dist, doc[:200]) #show only the first 200 chars in the document
+
+print("-" * 50) #just a divider
 print("\n Top Relevant Matches Found in Database")
 for i, doc in enumerate(search_results["documents"][0], 1): #adds an index to the results, starts at 1
     print(f"{i}. {doc}")
