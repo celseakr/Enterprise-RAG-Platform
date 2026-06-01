@@ -23,18 +23,21 @@ collection = chroma_client.get_or_create_collection(
 # Read pdf
 def load_pdf(file_path):
     reader = PdfReader(file_path) #uses PDFreader from pydf to open the PDF
-
-    text = "" #creates an empty string, this will store all extracted text from the PDF
-    for page in reader.pages: #loops through each page in pdf
+    pages = []
+   
+    for page_num, page in enumerate(reader.pages): #PDf alrdy knows what its pages are, Python isnt inventing them, PyPDF stores them in reader.pages
         page_text = page.extract_text() #extract text from each page
-        if page_text:  #check if text exists, to avoid errors, only continue if text was successfully extracted
-            text += page_text + "\n"  #add the page text to full text, then add a new line (\n) so pages dont merge together
-    return text
-# In simple terms, This function:
-# opens a PDF
-# reads every page
-# extracts text
-# combines everything into one big text output
+
+        if page_text:
+            pages.append({
+                "page": page_num + 1,
+                "text": page_text 
+                 })
+           
+    return pages
+
+
+
 
 # Chunk texts by sentences
 def chunk_text(text, max_char=500): #input:big text, output: smaller texts, each chunk is a max of 500 characters
@@ -54,14 +57,32 @@ def chunk_text(text, max_char=500): #input:big text, output: smaller texts, each
 
     return chunks
     
+#so you know which page each chunk comes from
+def prepare_chunks_with_metadata(pdf_pages): 
+
+    all_chunks = []
+    all_metadata = []
+
+    for page_data in pdf_pages: #it's labeled pdf_pages bcs pdf_pages is the processed pdf defined at the bottom of the page
+
+        page_chunks = chunk_text(page_data["text"])
+
+        for chunk in page_chunks:
+            all_chunks.append(chunk)
+
+            all_metadata.append({
+                "page": page_data["page"]
+            })
+
+    return all_chunks, all_metadata
 
 print ("Loading PDF....")
 
-pdf_text =load_pdf("pdf_dataset.pdf")
+pdf_pages =load_pdf("pdf_dataset.pdf")
 
 print("Chunking text....")
 
-sample_documents = chunk_text(pdf_text)
+sample_documents = chunk_text(pdf_pages)
 
 print(f"Total chunks created: {len(sample_documents)}")
 
@@ -77,7 +98,8 @@ document_ids = [f"id{x}"for x in range(len(sample_documents))]
 print("Generating vector embeddings and saving to chromaDB...")
 collection.add(
     documents =sample_documents,
-    ids = document_ids
+    ids = document_ids,
+    metadatas=metadata
 )
 
 print(len(sample_documents))
@@ -93,7 +115,7 @@ print(f"\n Running semantic search query: '{user_query}' ")
 search_results = collection.query(
     query_texts=[user_query],
     n_results=2,
-    include=["documents", "distances"]
+    include=["documents", "distances", "metadatas"]
 )
 
 #Check for distance
