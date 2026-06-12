@@ -37,8 +37,6 @@ def load_pdf(file_path):
     return pages
 
 
-
-
 # Chunk texts by sentences
 def chunk_text(text, max_char=500): #input:big text, output: smaller texts, each chunk is a max of 500 characters
     sentences=sent_tokenize(text)
@@ -82,7 +80,7 @@ pdf_pages =load_pdf("pdf_dataset.pdf")
 
 print("Chunking text....")
 
-sample_documents = chunk_text(pdf_pages)
+sample_documents, metadata = prepare_chunks_with_metadata(pdf_pages)
 
 print(f"Total chunks created: {len(sample_documents)}")
 
@@ -119,13 +117,17 @@ search_results = collection.query(
 )
 
 #Check for distance
-for doc, dist in zip( #zip is a python function that takes two or more lists and pairs them together
+for doc, dist, metadata in zip(
     search_results["documents"][0], #the 0 here brings out only the result for the first query, query indexed 0, this is important if there were many queries
-    search_results["distances"][0]
+    search_results["distances"][0],
+    search_results["metadatas"][0]
 ):
-    print(dist, doc[:200]) #show only the first 200 chars in the document
+    print("-" * 50)
+    print("Distance:", dist)
 
-print("-" * 50) #just a divider
-print("\n Top Relevant Matches Found in Database")
-for i, doc in enumerate(search_results["documents"][0], 1): #adds an index to the results, starts at 1
-    print(f"{i}. {doc}")
+    if metadata is None:
+        print("Page: Unknown")
+    else:
+        print("Page:", metadata.get("page", "Unknown"))
+
+    print(doc[:300])
