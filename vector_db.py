@@ -137,7 +137,16 @@ import ollama
 retrieved_docs = search_results["documents"][0]
 context = "\n\n".join(retrieved_docs)
 prompt = f"""
-Answer the question using ONLY the provided context.
+You are a document assistant.
+
+Use ONLY the supplied context.
+
+If the answer cannot be found in the context,
+respond with:
+
+"I could not find this information in the document."
+
+Always cite the page number when possible.
 
 Context:
 {context}
