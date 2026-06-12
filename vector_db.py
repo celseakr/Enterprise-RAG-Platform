@@ -131,3 +131,34 @@ for doc, dist, metadata in zip(
         print("Page:", metadata.get("page", "Unknown"))
 
     print(doc[:300])
+
+# ========================================== # MILESTONE: LLM # ========================================== 
+import ollama
+retrieved_docs = search_results["documents"][0]
+context = "\n\n".join(retrieved_docs)
+prompt = f"""
+Answer the question using ONLY the provided context.
+
+Context:
+{context}
+
+Question:
+{user_query}
+
+Answer:
+"""
+
+#Call the model
+response = ollama.chat(
+    model="llama3",
+    messages=[
+        {
+            "role": "user",
+            "content": prompt
+        }
+    ]
+)
+
+#answer
+print("\nGenerated Answer:")
+print(response["message"]["content"])
