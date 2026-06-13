@@ -4,9 +4,13 @@ from pypdf import PdfReader
 import nltk
 nltk.download ('punkt_tab') #a pretrained model that knows how to split text into sentences
 from nltk.tokenize import  sent_tokenize
+import os
+import uuid
+
+
+
 
 # 1. Initialise local persistent databse storage
-print ("Initialsing ChromaDB local storage... ")
 chroma_client = chromadb.PersistentClient(path="./chroma_db")
 
 # 2. Configure ChromaDB to use your local Ollama embedding engine
@@ -20,11 +24,46 @@ collection = chroma_client.get_or_create_collection(
     embedding_function=ollame_ef
 )
 
+#ingestion
+def index_pdf(file_path):
+
+    #Tags the data by file
+    file_name = os.path.basename(file_path)
+
+    #1. loading pdf
+    pdf_pages =load_pdf(file_path) 
+
+    #2. chunking text
+    sample_documents, metadata = prepare_chunks_with_metadata(pdf_pages,file_name) 
+
+    print(f"Total chunks created: {len(sample_documents)}")
+
+    #3. Create unique IDs for each text snippet
+    document_ids = [
+        f"{file_name}_{uuid.uuid4()}_{i}"
+        for i in range(len(sample_documents))] # now this becomes file1.pdf_chunk_0, file1.pdf_chunk_1, file2.pdf_chunk_0
+
+    # 5. Convert text to vectors and save to database; Generating vector embeddings and saving to chromaDB
+    collection.add(
+        documents =sample_documents,
+        ids = document_ids,
+        metadatas=metadata
+    )
+    return
+
+
+#Delete PDF
+def delete_pdf(file_name):
+    collection.delete(
+        where ={"file":file_name}
+    )
+
+
 # Read pdf
-def load_pdf(file_path):
-    reader = PdfReader(file_path) #uses PDFreader from pydf to open the PDF
+def load_pdf(file_name):
+    reader = PdfReader(file_name) #uses PDFreader from pydf to open the PDF
     pages = []
-   
+
     for page_num, page in enumerate(reader.pages): #PDf alrdy knows what its pages are, Python isnt inventing them, PyPDF stores them in reader.pages
         page_text = page.extract_text() #extract text from each page
 
@@ -32,8 +71,8 @@ def load_pdf(file_path):
             pages.append({
                 "page": page_num + 1,
                 "text": page_text 
-                 })
-           
+                })
+        
     return pages
 
 
@@ -55,8 +94,8 @@ def chunk_text(text, max_char=500): #input:big text, output: smaller texts, each
 
     return chunks
     
-#so you know which page each chunk comes from
-def prepare_chunks_with_metadata(pdf_pages): 
+#Add Metadata to chunks, so you know which page each chunk comes from
+def prepare_chunks_with_metadata(pdf_pages,file_name): 
 
     all_chunks = []
     all_metadata = []
@@ -69,74 +108,44 @@ def prepare_chunks_with_metadata(pdf_pages):
             all_chunks.append(chunk)
 
             all_metadata.append({
-                "page": page_data["page"]
+                "page": page_data["page"],
+                "file": file_name,
+                "file_id": file_name
             })
 
     return all_chunks, all_metadata
 
-print ("Loading PDF....")
+#Retrieval
+def search_query(query, n_results=2):
+    if not query:
+        return {"documents": [[]], "distances": [[]], "metadatas": [[]]}
 
-pdf_pages =load_pdf("pdf_dataset.pdf")
+    return collection.query(
+        query_texts=[query],
+        n_results=n_results,
+        include=["documents", "distances", "metadatas"]
+    )
 
-print("Chunking text....")
+#helper for LLM
+def retrieve_context(query):
+    results = search_query(query)
 
-sample_documents, metadata = prepare_chunks_with_metadata(pdf_pages)
+    docs = results["documents"][0]
+    metas = results["metadatas"][0]
 
-print(f"Total chunks created: {len(sample_documents)}")
+    return list(zip(docs, metas))
 
-# for debugging purposes, just to know if my chunking works properly
-for i, chunk in enumerate(sample_documents[:3]): #takes the first 3 chunks and adds an index with enumerate
-    print(f"\n CHUNK{i}:") #adds the index
-    print(chunk) #adds the chunk content
 
-# Create unique IDs for each text snippet
-document_ids = [f"id{x}"for x in range(len(sample_documents))]
-
-# 5. Convert text to vectors and save to database
-print("Generating vector embeddings and saving to chromaDB...")
-collection.add(
-    documents =sample_documents,
-    ids = document_ids,
-    metadatas=metadata
-)
-
-print(len(sample_documents))
-print("Vector database successfully built!")
-
-# ========================================== # MILESTONE: RUN SEMANTIC SEARCH QUERIES # ========================================== 
-# The database will find matching concepts even if the exact words don't match.
-
-user_query = "donors request beneficiary data"
-
-print(f"\n Running semantic search query: '{user_query}' ")
-
-search_results = collection.query(
-    query_texts=[user_query],
-    n_results=2,
-    include=["documents", "distances", "metadatas"]
-)
-
-#Check for distance
-for doc, dist, metadata in zip(
-    search_results["documents"][0], #the 0 here brings out only the result for the first query, query indexed 0, this is important if there were many queries
-    search_results["distances"][0],
-    search_results["metadatas"][0]
-):
-    print("-" * 50)
-    print("Distance:", dist)
-
-    if metadata is None:
-        print("Page: Unknown")
-    else:
-        print("Page:", metadata.get("page", "Unknown"))
-
-    print(doc[:300])
-
-# ========================================== # MILESTONE: LLM # ========================================== 
 import ollama
-retrieved_docs = search_results["documents"][0]
-context = "\n\n".join(retrieved_docs)
-prompt = f"""
+
+def rag_answer(query):
+    docs = retrieve_context(query)
+    context = "\n\n".join(
+        f"Page {m.get('page')}: {d}"
+        for d, m in docs
+    )
+    
+    prompt = f"""
 You are a document assistant.
 
 Use ONLY the supplied context.
@@ -152,22 +161,20 @@ Context:
 {context}
 
 Question:
-{user_query}
+{query}
 
 Answer:
 """
 
-#Call the model
-response = ollama.chat(
-    model="llama3",
-    messages=[
-        {
-            "role": "user",
-            "content": prompt
-        }
-    ]
-)
-
-#answer
-print("\nGenerated Answer:")
-print(response["message"]["content"])
+    #Call the model
+    response = ollama.chat(
+        model="llama3",
+        messages=[
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ]
+    )
+    #answer
+    return response["message"]["content"]
