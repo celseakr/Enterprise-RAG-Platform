@@ -8,8 +8,6 @@ import os
 import uuid
 
 
-
-
 # 1. Initialise local persistent databse storage
 chroma_client = chromadb.PersistentClient(path="./chroma_db")
 
