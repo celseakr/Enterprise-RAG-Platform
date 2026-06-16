@@ -1,4 +1,4 @@
-# 🧠 Enterprise Retrieval-Augmented Generation (RAG) System
+# 🧠 Retrieval-Augmented Generation (RAG) System
 
 A local document question-answering system that allows users to upload private documents and ask natural language questions. The system retrieves relevant context from documents and uses a local LLM to generate grounded, context-aware answers.
 
